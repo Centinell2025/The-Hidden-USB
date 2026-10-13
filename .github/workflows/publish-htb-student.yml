@@ -35,7 +35,7 @@ jobs:
               files=[p for p in z.infolist() if not p.is_dir()]
               assert len(files)==18
               assert all(p.flag_bits&1 for p in files)
-              assert z.testzip()==None or True # encryption tested by explicit read below
+              # Every encrypted member is read and integrity-checked using the password.
               for p in files:z.read(p.filename,pwd=b'hackthebox')
               assert not any('instructor' in p.filename.lower() or 'solution' in p.filename.lower() for p in files)
           print('PASS: 18 password-protected student files; no solutions or instructor files')
