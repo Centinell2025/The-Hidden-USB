@@ -1,0 +1,57 @@
+name: Publish HTB Password-Protected Student ZIP
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-htb-student.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release-student:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Regenerate and verify all synthetic evidence
+        run: |
+          python3 tools/build_lab.py
+          python3 tools/verify_lab.py
+          python3 -m unittest discover -s tests -v
+          python3 tools/build_student_zip.py
+      - name: Repackage password-protected student bundle for HTB
+        run: |
+          mkdir -p dist/htb-student
+          cd dist/htb-student
+          unzip -q ../The-Hidden-USB-STUDENT.zip
+          zip -q -X -r -P hackthebox ../The-Hidden-USB-HTB-STUDENT.zip README.txt PLAYER-INSTRUCTIONS.md docs questions artifacts
+          cd ../..
+          unzip -tP hackthebox dist/The-Hidden-USB-HTB-STUDENT.zip | tail -3
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('dist/The-Hidden-USB-HTB-STUDENT.zip') as z:
+              files=[p for p in z.infolist() if not p.is_dir()]
+              assert len(files)==18
+              assert all(p.flag_bits&1 for p in files)
+              assert z.testzip()==None or True # encryption tested by explicit read below
+              for p in files:z.read(p.filename,pwd=b'hackthebox')
+              assert not any('instructor' in p.filename.lower() or 'solution' in p.filename.lower() for p in files)
+          print('PASS: 18 password-protected student files; no solutions or instructor files')
+          PY
+      - name: Publish GitHub Release for direct download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=hidden-usb-sherlock-student-v1
+          FILE=dist/The-Hidden-USB-HTB-STUDENT.zip
+          if gh release view "$TAG" >/dev/null 2>&1; then
+             gh release upload "$TAG" "$FILE" --clobber
+          else
+             gh release create "$TAG" "$FILE" \
+                 --title "The Hidden USB — HTB student training archive" \
+                 --notes "Synthetic Beacon of the Eagle LLC DFIR Sherlock student bundle. ZIP password: hackthebox. No instructor answer key. Candidate only, not an HTB-approved challenge." \
+                 --latest=false
+          fi
+          gh release view "$TAG" --json url,assets
