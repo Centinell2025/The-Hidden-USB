@@ -1,0 +1,33 @@
+name: Verify Hidden USB Sherlock
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile and generate safe evidence
+        run: |
+          python3 -m compileall -q tools tests
+          python3 tools/build_lab.py
+      - name: Validate forensic joins and specimen bytes
+        run: python3 tools/verify_lab.py
+      - name: Regression suite
+        run: python3 -m unittest discover -s tests -v
+      - name: Build tested standalone student ZIP
+        run: |
+          python3 tools/build_lab.py
+          python3 tools/build_student_zip.py
+      - name: Publish student-only download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidden-usb-student
+          path: dist/The-Hidden-USB-STUDENT.zip
+          if-no-files-found: error
